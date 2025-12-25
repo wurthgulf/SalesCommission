@@ -1,0 +1,803 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Würth Compensation Engine v6.1 (Corrected)</title>
+    <script src="https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --wurth-red: #CC0000;
+            --wurth-dark: #111111;
+            --wurth-gray: #f4f6f8;
+            --wurth-border: #e2e8f0;
+        }
+        body { font-family: 'Roboto', sans-serif; background-color: var(--wurth-gray); color: #334155; }
+        
+        /* Header */
+        .wurth-header { background-color: var(--wurth-dark); color: white; }
+        .logo-container img { height: 42px; }
+        
+        /* Cards */
+        .card { background: white; border-radius: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03); border: 1px solid var(--wurth-border); transition: transform 0.2s; }
+        .card:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05), 0 4px 6px -2px rgba(0, 0, 0, 0.025); }
+        
+        /* Drop Zones */
+        .drop-zone { border: 2px dashed #cbd5e1; background: #fafafa; transition: all 0.2s; border-radius: 8px; }
+        .drop-zone:hover { border-color: var(--wurth-red); background-color: #fff5f5; transform: translateY(-2px); }
+        .drop-zone.uploaded { border-color: #22c55e; background-color: #f0fdf4; }
+        
+        /* Buttons */
+        .btn-primary { background-color: var(--wurth-red); color: white; transition: all 0.2s; }
+        .btn-primary:hover { background-color: #990000; shadow: 0 4px 12px rgba(204, 0, 0, 0.3); }
+        .btn-secondary { background-color: white; border: 1px solid #d1d5db; color: #374151; transition: all 0.2s; }
+        .btn-secondary:hover { background-color: #f3f4f6; border-color: #9ca3af; }
+
+        /* Table */
+        .table-container { max-height: 600px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: #cbd5e1 #f1f5f9; }
+        .table-header { @apply px-4 py-3 text-left text-xs font-bold text-gray-600 uppercase tracking-wider bg-gray-100 border-b border-gray-200 sticky top-0 z-20 cursor-pointer select-none hover:bg-gray-200 transition-colors; }
+        .table-cell { @apply px-4 py-3 whitespace-nowrap text-sm text-gray-700 border-b border-gray-100; }
+        .table-footer { @apply px-4 py-3 text-right text-sm font-bold bg-gray-50 border-t-2 border-gray-300 sticky bottom-0 z-20 shadow-inner; }
+
+        /* Badges */
+        .badge { @apply px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wide; }
+        .badge-green { background-color: #dcfce7; color: #166534; }
+        .badge-yellow { background-color: #fef9c3; color: #854d0e; }
+        .badge-red { background-color: #fee2e2; color: #991b1b; }
+        .badge-blue { background-color: #dbeafe; color: #1e40af; }
+
+        /* Animations */
+        .fade-in { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1); }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        /* Modal */
+        .modal-bg { background-color: rgba(0,0,0,0.5); backdrop-filter: blur(2px); }
+    </style>
+</head>
+<body class="pb-24">
+
+    <nav class="wurth-header sticky top-0 z-50 shadow-lg">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex justify-between items-center h-20">
+                <div class="flex items-center logo-container">
+                    <img src="https://i.ibb.co/wZyxWPDH/Wurth-Gulf-CMYK-PNG-01-white-1.png" alt="Würth Logo">
+                    <div class="border-l border-gray-600 pl-4 ml-4">
+                        <span class="block text-xl font-bold tracking-tight">COMPENSATION ENGINE</span>
+                        <span class="block text-xs text-gray-400 font-medium tracking-wide">Enterprise v6.1 (Fix)</span>
+                    </div>
+                </div>
+                <div class="flex items-center gap-4">
+                    <button onclick="toggleSettings()" class="text-gray-300 hover:text-white transition-colors">
+                        <i class="fa-solid fa-gear text-lg"></i>
+                    </button>
+                    <div class="text-xs text-gray-400 border border-gray-600 rounded px-2 py-1 hidden md:block">
+                        <i class="fa-solid fa-shield-halved text-green-500 mr-1"></i> Secure Local Processing
+                    </div>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-8">
+
+        <div id="dashboard" class="hidden grid grid-cols-1 md:grid-cols-4 gap-6 mb-8 fade-in">
+            <div class="card p-5 border-l-4 border-red-600">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-gray-500 uppercase">Total Payout</p>
+                        <h3 class="text-2xl font-bold text-gray-900 mt-1" id="dash-total">AED 0.00</h3>
+                    </div>
+                    <div class="p-2 bg-red-50 rounded text-red-600"><i class="fa-solid fa-sack-dollar"></i></div>
+                </div>
+            </div>
+            <div class="card p-5 border-l-4 border-blue-600">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-gray-500 uppercase">Processed</p>
+                        <h3 class="text-2xl font-bold text-gray-900 mt-1" id="dash-count">0</h3>
+                    </div>
+                    <div class="p-2 bg-blue-50 rounded text-blue-600"><i class="fa-solid fa-users"></i></div>
+                </div>
+            </div>
+            <div class="card p-5 border-l-4 border-green-600">
+                <div class="flex justify-between items-start">
+                    <div>
+                        <p class="text-xs font-bold text-gray-500 uppercase">Target Met (>100%)</p>
+                        <h3 class="text-2xl font-bold text-gray-900 mt-1" id="dash-target">0</h3>
+                    </div>
+                    <div class="p-2 bg-green-50 rounded text-green-600"><i class="fa-solid fa-bullseye"></i></div>
+                </div>
+            </div>
+            <div class="card p-5 border-l-4 border-gray-600">
+                <div class="flex justify-between items-start">
+                    <div class="overflow-hidden">
+                        <p class="text-xs font-bold text-gray-500 uppercase">Top Performer</p>
+                        <h3 class="text-lg font-bold text-gray-900 mt-1 truncate" id="dash-top">N/A</h3>
+                        <p class="text-xs text-green-600 font-bold" id="dash-top-val">AED 0.00</p>
+                    </div>
+                    <div class="p-2 bg-gray-100 rounded text-gray-600"><i class="fa-solid fa-trophy"></i></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card mb-8">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50 rounded-t-lg">
+                <div class="flex items-center gap-3">
+                    <span class="bg-gray-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow">1</span>
+                    <h2 class="text-sm font-bold text-gray-800 uppercase tracking-wide">Data Import</h2>
+                </div>
+                <button onclick="resetAll()" class="text-xs font-bold text-gray-500 hover:text-red-600 flex items-center gap-1 transition-colors">
+                    <i class="fa-solid fa-trash-can"></i> CLEAR ALL
+                </button>
+            </div>
+            
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <div class="drop-zone p-6 text-center cursor-pointer relative group" id="drop-hr">
+                    <input type="file" id="file-hr" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx,.csv" onchange="handleFile(this, 'hr')">
+                    <i class="fa-solid fa-users text-3xl text-gray-300 mb-3 group-hover:text-red-500 transition-colors"></i>
+                    <h3 class="font-bold text-gray-700 text-xs uppercase">HR & Tenure</h3>
+                    <p class="text-[10px] text-gray-400 mt-1 truncate" id="name-hr">Drag or Click</p>
+                </div>
+                <div class="drop-zone p-6 text-center cursor-pointer relative group" id="drop-sales">
+                    <input type="file" id="file-sales" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx,.csv" onchange="handleFile(this, 'sales')">
+                    <i class="fa-solid fa-chart-line text-3xl text-gray-300 mb-3 group-hover:text-red-500 transition-colors"></i>
+                    <h3 class="font-bold text-gray-700 text-xs uppercase">Sales Performance</h3>
+                    <p class="text-[10px] text-gray-400 mt-1 truncate" id="name-sales">Drag or Click</p>
+                </div>
+                <div class="drop-zone p-6 text-center cursor-pointer relative group" id="drop-comm">
+                    <input type="file" id="file-comm" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx,.csv" onchange="handleFile(this, 'comm')">
+                    <i class="fa-solid fa-file-invoice-dollar text-3xl text-gray-300 mb-3 group-hover:text-red-500 transition-colors"></i>
+                    <h3 class="font-bold text-gray-700 text-xs uppercase">Commission Report</h3>
+                    <p class="text-[10px] text-gray-400 mt-1 truncate" id="name-comm">Drag or Click</p>
+                </div>
+                <div class="drop-zone p-6 text-center cursor-pointer relative group" id="drop-cust">
+                    <input type="file" id="file-cust" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer" accept=".xlsx,.csv" onchange="handleFile(this, 'cust')">
+                    <i class="fa-solid fa-user-plus text-3xl text-gray-300 mb-3 group-hover:text-red-500 transition-colors"></i>
+                    <h3 class="font-bold text-gray-700 text-xs uppercase">Customer Bonus</h3>
+                    <p class="text-[10px] text-gray-400 mt-1 truncate" id="name-cust">Drag or Click</p>
+                </div>
+            </div>
+        </div>
+
+        <div id="step-config" class="hidden card mb-8 fade-in">
+            <div class="p-4 border-b border-gray-100 flex items-center justify-between bg-gray-50 rounded-t-lg">
+                <div class="flex items-center gap-3">
+                    <span class="bg-gray-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow">2</span>
+                    <h2 class="text-sm font-bold text-gray-800 uppercase tracking-wide">Configuration</h2>
+                </div>
+                <div class="text-xs text-green-600 font-medium" id="auto-map-status"></div>
+            </div>
+            
+            <div class="p-6">
+                <div class="mb-6 flex items-end gap-4 border-b border-gray-100 pb-6">
+                    <div class="w-full md:w-1/3">
+                        <label class="block text-xs font-bold text-gray-500 uppercase mb-1">Processing Date</label>
+                        <input type="date" id="process-date" class="w-full border border-gray-300 rounded p-2 text-sm focus:border-red-500 focus:ring-1 focus:ring-red-500 outline-none transition-all">
+                    </div>
+                    <div class="pb-1">
+                        <button onclick="saveMappings()" class="text-xs text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1">
+                            <i class="fa-solid fa-floppy-disk"></i> Save Mapping Profile
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                    <div class="space-y-4">
+                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Identification</h4>
+                        <div class="group"><label class="text-xs font-semibold text-gray-600">Sales Unit (ID)*</label><select id="map-id" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                        <div class="group"><label class="text-xs font-semibold text-gray-600">Employee Name</label><select id="map-name" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                        <div class="group"><label class="text-xs font-semibold text-gray-600">Joining Date</label><select id="map-join-date" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                    </div>
+                    <div class="space-y-4">
+                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Sales & Commission</h4>
+                        <div class="group"><label class="text-xs font-semibold text-gray-600">Monthly Sales (AED)</label><select id="map-turnover" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                        <div class="group"><label class="text-xs font-semibold text-gray-600">Target Fulfillment (STF%)</label><select id="map-stf" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                        <div class="p-3 bg-red-50 rounded border border-red-100 space-y-3">
+                            <div class="group">
+                                <label class="text-xs font-bold text-red-700">Commission Data ID Column</label>
+                                <select id="map-comm-id" class="w-full border p-2 rounded text-sm bg-white"></select>
+                            </div>
+                            <div class="group">
+                                <label class="text-xs font-bold text-red-700">Commission Paid Column</label>
+                                <select id="map-commission" class="w-full border p-2 rounded text-sm bg-white"></select>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="space-y-4">
+                        <h4 class="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">Customer Metrics</h4>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs font-semibold text-gray-600">MBC Score</label><select id="map-mbc" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                            <div><label class="text-xs font-semibold text-gray-600">CB Result</label><select id="map-cb" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                        </div>
+                        <div><label class="text-xs font-semibold text-gray-600">Division</label><select id="map-division" class="w-full border p-2 rounded text-sm bg-gray-50"></select></div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div><label class="text-xs font-bold text-red-600">New (QC)</label><select id="map-new-cust" class="w-full border border-red-100 p-2 rounded text-sm bg-red-50"></select></div>
+                            <div><label class="text-xs font-bold text-red-600">React (QC)</label><select id="map-react-cust" class="w-full border border-red-100 p-2 rounded text-sm bg-red-50"></select></div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-8 flex justify-center">
+                    <button onclick="runCalculation()" class="btn-primary px-10 py-3 rounded-full shadow-lg font-bold text-lg flex items-center gap-2 transform hover:-translate-y-1 transition-all">
+                        <i class="fa-solid fa-bolt"></i> Calculate Payouts
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="step-preview" class="hidden card mb-12 fade-in">
+            <div class="p-4 border-b border-gray-100 bg-gray-50 rounded-t-lg flex flex-col md:flex-row items-center justify-between gap-4">
+                <div class="flex items-center gap-3">
+                    <span class="bg-gray-900 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shadow">3</span>
+                    <h2 class="text-sm font-bold text-gray-800 uppercase tracking-wide">Review & Export</h2>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-3">
+                    <div class="relative">
+                        <select id="filter-division" onchange="applyFilters()" class="pl-8 pr-4 py-1.5 border rounded-full text-xs font-bold text-gray-600 focus:border-red-500 appearance-none bg-white">
+                            <option value="all">All Divisions</option>
+                        </select>
+                        <i class="fa-solid fa-filter absolute left-3 top-2 text-gray-400 text-xs"></i>
+                    </div>
+                    
+                    <div class="relative">
+                        <select id="filter-status" onchange="applyFilters()" class="pl-8 pr-4 py-1.5 border rounded-full text-xs font-bold text-gray-600 focus:border-red-500 appearance-none bg-white">
+                            <option value="all">All Statuses</option>
+                            <option value="Bonus Paid">Bonus Paid</option>
+                            <option value="Target Missed">Target Missed</option>
+                            <option value="New Hire">New Hire</option>
+                        </select>
+                        <i class="fa-solid fa-tag absolute left-3 top-2 text-gray-400 text-xs"></i>
+                    </div>
+
+                    <div class="relative">
+                        <i class="fa-solid fa-search absolute left-3 top-2 text-gray-400 text-xs"></i>
+                        <input type="text" id="table-search" placeholder="Search..." class="pl-8 pr-3 py-1.5 border rounded-full text-xs w-40 focus:border-red-500 outline-none" onkeyup="applyFilters()">
+                    </div>
+
+                    <div class="w-px h-6 bg-gray-300 mx-1"></div>
+
+                    <button onclick="downloadExcel()" class="bg-green-600 hover:bg-green-700 text-white px-5 py-1.5 rounded-full shadow text-sm font-bold transition-all flex items-center gap-2">
+                        <i class="fa-solid fa-file-excel"></i> Export
+                    </button>
+                </div>
+            </div>
+            
+            <div class="table-container bg-white">
+                <table class="min-w-full divide-y divide-gray-200" id="preview-table">
+                    <thead>
+                        <tr>
+                            <th class="table-header" onclick="sortData('SalesUnit')">Sales Unit</th>
+                            <th class="table-header" onclick="sortData('Name')">Name</th>
+                            <th class="table-header">Status</th>
+                            <th class="table-header">Joined Date</th>
+                            <th class="table-header">Division</th>
+                            <th class="table-header text-right" onclick="sortData('TargetFulfillment')">Target %</th>
+                            <th class="table-header text-right">Monthly Sales</th>
+                            <th class="table-header text-right">Seniority</th>
+                            <th class="table-header text-right">Commission</th>
+                            <th class="table-header text-right">STF Bonus</th>
+                            <th class="table-header text-right">Cust Bonus</th>
+                            <th class="table-header text-right text-red-600 font-bold bg-red-50" onclick="sortData('Total')">Total Payout</th>
+                            <th class="table-header hidden col-notes">Notes</th>
+                        </tr>
+                    </thead>
+                    <tbody class="divide-y divide-gray-100" id="preview-body">
+                        </tbody>
+                    <tfoot class="table-footer">
+                        <tr>
+                            <td colspan="5" class="text-gray-500 font-normal">Visible Totals:</td>
+                            <td class="text-right text-gray-700" id="ft-stf">-</td>
+                            <td class="text-right text-gray-700" id="ft-sales">0.00</td>
+                            <td class="text-right text-gray-700" id="ft-sen">0.00</td>
+                            <td class="text-right text-gray-700" id="ft-comm">0.00</td>
+                            <td class="text-right text-gray-700" id="ft-stfb">0.00</td>
+                            <td class="text-right text-gray-700" id="ft-cust">0.00</td>
+                            <td class="text-right text-red-600" id="ft-total">0.00</td>
+                            <td class="hidden col-notes"></td>
+                        </tr>
+                    </tfoot>
+                </table>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="settings-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center modal-bg fade-in">
+        <div class="bg-white rounded-lg shadow-xl w-96 overflow-hidden">
+            <div class="bg-gray-900 text-white p-4 flex justify-between items-center">
+                <h3 class="font-bold text-sm uppercase">Configuration Settings</h3>
+                <button onclick="toggleSettings()" class="text-gray-400 hover:text-white"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <div class="p-6 space-y-6">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="font-bold text-sm text-gray-800">Show Notes Column</div>
+                        <div class="text-xs text-gray-500">Include detailed logs in export</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-notes" class="sr-only peer" onchange="renderTable()">
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                    </label>
+                </div>
+                
+                <div class="flex items-center justify-between">
+                    <div>
+                        <div class="font-bold text-sm text-gray-800">Strict Rounding</div>
+                        <div class="text-xs text-gray-500">Round all values to 2 decimals</div>
+                    </div>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="setting-rounding" class="sr-only peer" checked>
+                        <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                    </label>
+                </div>
+            </div>
+            <div class="p-4 bg-gray-50 text-right">
+                <button onclick="toggleSettings()" class="btn-primary px-4 py-1.5 rounded text-sm font-bold shadow">Close</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- State Management ---
+        const store = {
+            data: { hr: null, sales: null, comm: null, cust: null },
+            headers: { hr: [], sales: [], comm: [], cust: [] },
+            results: [],
+            mappingsLoaded: false
+        };
+
+        // Init
+        document.getElementById('process-date').valueAsDate = new Date();
+        loadMappings();
+
+        // --- File Handling ---
+        async function handleFile(input, type) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const dropZone = document.getElementById(`drop-${type}`);
+            const nameLabel = document.getElementById(`name-${type}`);
+            nameLabel.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin text-red-500"></i> Reading...';
+
+            try {
+                const buffer = await file.arrayBuffer();
+                const wb = XLSX.read(buffer);
+                const ws = wb.Sheets[wb.SheetNames[0]];
+                const json = XLSX.utils.sheet_to_json(ws, {defval: ""});
+
+                if (json.length === 0) throw new Error("Empty file");
+
+                store.data[type] = json;
+                store.headers[type] = Object.keys(json[0]);
+
+                dropZone.classList.add('uploaded');
+                nameLabel.innerHTML = `<span class="text-green-600 font-bold truncate block w-full"><i class="fa-solid fa-check"></i> ${file.name}</span>`;
+                
+                checkFiles();
+
+            } catch (err) {
+                console.error(err);
+                nameLabel.innerHTML = `<span class="text-red-500 font-bold">Failed</span>`;
+            }
+        }
+
+        function checkFiles() {
+            if (store.data.hr && store.data.sales && store.data.comm && store.data.cust) {
+                initConfig();
+            }
+        }
+
+        function resetAll() { location.reload(); }
+
+        // --- Configuration & Mapping ---
+        function initConfig() {
+            document.getElementById('step-config').classList.remove('hidden');
+            
+            const mappingConfigs = [
+                { id: 'map-id', list: store.headers.hr, keys: ['sales unit', 'id', 'code'] },
+                { id: 'map-name', list: store.headers.hr, keys: ['sales name', 'employee name', 'name'] },
+                { id: 'map-join-date', list: store.headers.hr, keys: ['joined', 'date', 'start'] },
+                { id: 'map-turnover', list: store.headers.sales, keys: ['monthly sales', 'sales', 'turnover'] },
+                { id: 'map-stf', list: store.headers.sales, keys: ['fulfillment', 'target fulfillment', 'stf'] },
+                
+                // FIX: Separated Commission ID mapping (usually 'Sales Rep No') and Amount (usually 'Commission Paid')
+                { id: 'map-comm-id', list: store.headers.comm, keys: ['sales rep', 'id', 'code'] },
+                { id: 'map-commission', list: store.headers.comm, keys: ['commission paid', 'incentive', 'paid'] },
+                
+                { id: 'map-mbc', list: store.headers.cust, keys: ['mbc after qc', 'mbc'] },
+                { id: 'map-cb', list: store.headers.cust, keys: ['cb after qc', 'cb'] },
+                { id: 'map-division', list: store.headers.cust, keys: ['division', 'sector'] },
+                { id: 'map-new-cust', list: store.headers.cust, keys: ['new after qc', 'new customers'] },
+                { id: 'map-react-cust', list: store.headers.cust, keys: ['react after qc', 'reactivated'] }
+            ];
+
+            mappingConfigs.forEach(cfg => {
+                populateSelect(cfg.id, cfg.list, cfg.keys);
+            });
+
+            if(store.mappingsLoaded) {
+                document.getElementById('auto-map-status').innerHTML = '<i class="fa-solid fa-memory"></i> Mappings Restored';
+            } else {
+                document.getElementById('auto-map-status').innerHTML = '<i class="fa-solid fa-robot"></i> Auto-Mapped';
+            }
+        }
+
+        function populateSelect(elementId, options, keywords) {
+            const select = document.getElementById(elementId);
+            const savedVal = localStorage.getItem('wurth_v6_' + elementId);
+            
+            select.innerHTML = '<option value="">-- Select Column --</option>';
+            
+            let selectedValue = "";
+            
+            if(savedVal && options.includes(savedVal)) {
+                selectedValue = savedVal;
+            } 
+            else {
+                for (let kw of keywords) {
+                    const match = options.find(opt => opt.toLowerCase().includes(kw));
+                    if (match) { selectedValue = match; break; }
+                }
+            }
+
+            options.forEach(opt => {
+                const el = document.createElement('option');
+                el.value = opt;
+                el.innerText = opt;
+                if (opt === selectedValue) el.selected = true;
+                select.appendChild(el);
+            });
+        }
+
+        function saveMappings() {
+            const selects = document.querySelectorAll('select[id^="map-"]');
+            selects.forEach(sel => {
+                if(sel.value) localStorage.setItem('wurth_v6_' + sel.id, sel.value);
+            });
+            alert("Mappings saved locally.");
+        }
+
+        function loadMappings() {
+            if(localStorage.getItem('wurth_v6_map-id')) store.mappingsLoaded = true;
+        }
+
+        // --- Core Logic ---
+        function runCalculation() {
+            const getMap = (id) => document.getElementById(id).value;
+            const map = {
+                id: getMap('map-id'), name: getMap('map-name'), joinDate: getMap('map-join-date'),
+                turnover: getMap('map-turnover'), stf: getMap('map-stf'), 
+                
+                // FIX: Get Commission specific mappings
+                commId: getMap('map-comm-id'), 
+                commVal: getMap('map-commission'),
+                
+                mbc: getMap('map-mbc'), cb: getMap('map-cb'), division: getMap('map-division'),
+                newCust: getMap('map-new-cust'), reactCust: getMap('map-react-cust')
+            };
+
+            if (!map.id || !map.joinDate) { alert("Please map Sales Unit and Joining Date."); return; }
+            if (!map.commId || !map.commVal) { alert("Please map Commission ID and Commission Paid columns."); return; }
+
+            const processDate = document.getElementById('process-date').valueAsDate;
+            const round = (n) => document.getElementById('setting-rounding').checked ? Number((Math.round(n*100)/100).toFixed(2)) : n;
+            const cleanNum = (n) => {
+                if (!n) return 0;
+                if (typeof n === 'number') return n;
+                return parseFloat(n.toString().replace(/[^0-9.-]/g, '')) || 0;
+            };
+
+            // Indexing Helpers
+            const indexData = (dataset, idField) => {
+                let idx = {};
+                if(!dataset) return idx;
+                dataset.forEach(row => {
+                    let k = String(row[idField] || "").trim();
+                    if(k) idx[k] = row;
+                });
+                return idx;
+            };
+
+            // FIX: Commission Aggregation Logic (Calculate sum of commission instead of just reading one row)
+            const aggregateCommission = (dataset, idField, valField) => {
+                let totals = {};
+                if(!dataset) return totals;
+                dataset.forEach(row => {
+                    let k = String(row[idField] || "").trim();
+                    let val = cleanNum(row[valField]);
+                    if(k) {
+                        totals[k] = (totals[k] || 0) + val;
+                    }
+                });
+                return totals;
+            };
+
+            // 1. Index Sales and Customer data (One-to-One assumption)
+            const idxSales = indexData(store.data.sales, map.id); // Note: Assumes Sales file uses HR ID. If not, needs separate mapping.
+            const idxCust = indexData(store.data.cust, map.id);
+
+            // 2. Aggregate Commission Data (One-to-Many: 1 Sales Rep -> Many Invoices)
+            // This calculates the total from the provided report
+            const commTotals = aggregateCommission(store.data.comm, map.commId, map.commVal);
+
+            store.results = [];
+            let stats = { total: 0, count: 0, targetMet: 0, max: 0, top: "" };
+            
+            let divisions = new Set();
+
+            store.data.hr.forEach(row => {
+                let empID = String(row[map.id] || "").trim();
+                if (!empID) return;
+
+                // Dates
+                let joinRaw = row[map.joinDate];
+                let displayDate = joinRaw;
+                let monthsWorked = 0;
+                
+                if(typeof joinRaw === 'number') {
+                    let d = new Date((joinRaw - 25569)*86400000);
+                    displayDate = d.toISOString().split('T')[0];
+                    let diff = (processDate.getFullYear() - d.getFullYear()) * 12 + (processDate.getMonth() - d.getMonth());
+                    monthsWorked = diff >= 0 ? diff + 1 : 0;
+                } else if (joinRaw) {
+                    let d = new Date(joinRaw);
+                    if(!isNaN(d)) {
+                        let diff = (processDate.getFullYear() - d.getFullYear()) * 12 + (processDate.getMonth() - d.getMonth());
+                        monthsWorked = diff >= 0 ? diff + 1 : 0;
+                    }
+                }
+
+                // Data Retrieval
+                // We try to match IDs. Note: In real scenarios, Sales/Cust files might use different ID headers. 
+                // For this fix, we assume Sales/Cust use the HR ID format, but Commission uses its own mapped ID.
+                let sRow = idxSales[empID] || {};
+                let cRow = idxCust[empID] || {};
+
+                let turnover = round(cleanNum(sRow[map.turnover]));
+                let stfRaw = cleanNum(sRow[map.stf]);
+                
+                // Logic
+                let senBonus = 0;
+                if(monthsWorked >= 144) senBonus = 4000;
+                else if(monthsWorked >= 108) senBonus = 3000;
+                else if(monthsWorked >= 72) senBonus = 2000;
+                else if(monthsWorked >= 36) senBonus = 1000;
+                else if(monthsWorked >= 13) senBonus = 500;
+
+                let stfBonus = 0;
+                let stfScale = (stfRaw < 5 && stfRaw > 0) ? stfRaw * 100 : stfRaw;
+                let notes = [];
+
+                if(stfScale >= 100) {
+                    stats.targetMet++;
+                    if(stfScale >= 121 && turnover >= 131000) {
+                        stfBonus = turnover * 0.02;
+                        notes.push("STF 2% Rule");
+                    } else {
+                        // Matrix
+                        let col = 0;
+                        if (turnover >= 131000) col=3; else if (turnover >= 111000) col=2; else if (turnover >= 91000) col=1;
+                        
+                        if (stfScale >= 121) stfBonus = [1500, 2000, 2500, 0][col];
+                        else if (stfScale >= 116) stfBonus = [1250, 1750, 2250, 2400][col];
+                        else if (stfScale >= 110) stfBonus = [1000, 1500, 2000, 2250][col];
+                        else if (stfScale >= 105) stfBonus = [750, 1250, 1500, 1750][col];
+                        else stfBonus = [500, 1000, 1250, 1500][col];
+                    }
+                }
+                stfBonus = round(stfBonus);
+
+                let custBonus = 0;
+                let division = cRow[map.division] || "";
+                if(division) divisions.add(division);
+
+                let isNewHire = monthsWorked <= 7;
+                
+                if(isNewHire) {
+                    let nc = cleanNum(cRow[map.newCust]);
+                    let rc = cleanNum(cRow[map.reactCust]);
+                    if((nc + rc) >= 6) {
+                        if(monthsWorked >= 5 && monthsWorked <= 7 && stfScale < 90) {
+                            notes.push("New Hire: Failed STF Gate");
+                        } else {
+                            custBonus = 1500;
+                            notes.push("New Hire: Target Met");
+                        }
+                    }
+                } else {
+                    if(stfScale >= 90) {
+                        let mbc = cleanNum(cRow[map.mbc]);
+                        let cb = cleanNum(cRow[map.cb]);
+                        // Matrix
+                        let rowK = 0;
+                        [55,50,45,40,35,30].some(k => {if(mbc>k){rowK=k; return true;}});
+                        if(rowK > 0) {
+                            let cIdx = 0;
+                            if(cb>=4) cIdx=2; else if(cb>=3) cIdx=1; else if(cb>=2) cIdx=0; else rowK=0;
+                            
+                            if(rowK > 0) {
+                                const m = {30:[1000,1250,1500], 35:[1100,1350,1600], 40:[1200,1500,1700], 45:[1300,1650,2000], 50:[1400,1750,2500], 55:[1500,2000,3000]};
+                                custBonus = m[rowK][cIdx];
+                            }
+                        }
+                    }
+                }
+                custBonus = round(custBonus);
+
+                // FIX: Use the calculated total from commission file
+                let comm = round(commTotals[empID] || 0);
+                
+                let total = round(senBonus + stfBonus + custBonus + comm);
+
+                // Meta status
+                let status = "Standard";
+                let badge = "badge-blue";
+                if(total > 0) { status = "Bonus Paid"; badge = "badge-green"; }
+                else if (stfScale > 0) { status = "Target Missed"; badge = "badge-red"; }
+                else { status = "No Data"; badge = "badge-yellow"; }
+                if(isNewHire) { status = "New Hire"; badge = "badge-blue"; }
+
+                // Record
+                stats.total += total;
+                stats.count++;
+                if(total > stats.max) { stats.max = total; stats.top = row[map.name] || empID; }
+
+                store.results.push({
+                    SalesUnit: empID,
+                    Name: row[map.name] || "",
+                    JoinedDate: displayDate,
+                    Division: division,
+                    TargetFulfillment: stfScale, // Number for sorting
+                    stfDisplay: (stfScale > 0 ? stfScale.toFixed(2) + '%' : "0.00%"),
+                    MonthlySales: turnover,
+                    SeniorityBonus: senBonus,
+                    Commission: comm,
+                    STFBonus: stfBonus,
+                    CustBonus: custBonus,
+                    Total: total,
+                    Notes: notes.join(" | "),
+                    _status: status,
+                    _badge: badge
+                });
+            });
+
+            // Update UI
+            updateFilters(divisions);
+            updateDashboard(stats);
+            renderTable();
+            document.getElementById('step-preview').classList.remove('hidden');
+        }
+
+        // --- UI Updates ---
+        function updateDashboard(s) {
+            document.getElementById('dashboard').classList.remove('hidden');
+            document.getElementById('dash-total').innerText = fmtMoney(s.total);
+            document.getElementById('dash-count').innerText = s.count;
+            document.getElementById('dash-target').innerText = s.targetMet;
+            document.getElementById('dash-top').innerText = s.top || "N/A";
+            document.getElementById('dash-top-val').innerText = fmtMoney(s.max);
+        }
+
+        function updateFilters(divSet) {
+            const sel = document.getElementById('filter-division');
+            sel.innerHTML = '<option value="all">All Divisions</option>';
+            divSet.forEach(d => {
+                const op = document.createElement('option');
+                op.value = d;
+                op.innerText = d;
+                sel.appendChild(op);
+            });
+        }
+
+        function applyFilters() { renderTable(); }
+
+        function renderTable() {
+            const tbody = document.getElementById('preview-body');
+            tbody.innerHTML = "";
+            
+            const fDiv = document.getElementById('filter-division').value;
+            const fStat = document.getElementById('filter-status').value;
+            const search = document.getElementById('table-search').value.toLowerCase();
+            const showNotes = document.getElementById('setting-notes').checked;
+
+            // Toggle Columns
+            document.querySelectorAll('.col-notes').forEach(el => el.style.display = showNotes ? 'table-cell' : 'none');
+
+            // Footer Sums
+            let sums = { sales:0, sen:0, comm:0, stf:0, cust:0, tot:0 };
+
+            store.results.forEach(r => {
+                // Filter Logic
+                if (fDiv !== 'all' && r.Division !== fDiv) return;
+                if (fStat !== 'all' && r._status !== fStat) return;
+                if (search && !r.Name.toLowerCase().includes(search) && !r.SalesUnit.toLowerCase().includes(search)) return;
+
+                // Add to sums
+                sums.sales += r.MonthlySales;
+                sums.sen += r.SeniorityBonus;
+                sums.comm += r.Commission;
+                sums.stf += r.STFBonus;
+                sums.cust += r.CustBonus;
+                sums.tot += r.Total;
+
+                const tr = document.createElement('tr');
+                tr.className = "hover:bg-gray-50 transition-colors";
+                tr.innerHTML = `
+                    <td class="table-cell font-medium">${r.SalesUnit}</td>
+                    <td class="table-cell font-bold text-gray-800">${r.Name}</td>
+                    <td class="table-cell"><span class="badge ${r._badge}">${r._status}</span></td>
+                    <td class="table-cell text-gray-500">${r.JoinedDate}</td>
+                    <td class="table-cell text-gray-500">${r.Division}</td>
+                    <td class="table-cell text-right font-mono text-xs">${r.stfDisplay}</td>
+                    <td class="table-cell text-right text-gray-500">${fmtMoney(r.MonthlySales)}</td>
+                    <td class="table-cell text-right">${fmtMoney(r.SeniorityBonus)}</td>
+                    <td class="table-cell text-right">${fmtMoney(r.Commission)}</td>
+                    <td class="table-cell text-right">${fmtMoney(r.STFBonus)}</td>
+                    <td class="table-cell text-right">${fmtMoney(r.CustBonus)}</td>
+                    <td class="table-cell text-right font-bold text-red-600 bg-red-50 border-l border-red-100">${fmtMoney(r.Total)}</td>
+                    <td class="table-cell text-xs italic text-gray-400 col-notes ${showNotes?'':'hidden'}">${r.Notes}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Update Footer
+            document.getElementById('ft-sales').innerText = fmtMoney(sums.sales);
+            document.getElementById('ft-sen').innerText = fmtMoney(sums.sen);
+            document.getElementById('ft-comm').innerText = fmtMoney(sums.comm);
+            document.getElementById('ft-stfb').innerText = fmtMoney(sums.stf);
+            document.getElementById('ft-cust').innerText = fmtMoney(sums.cust);
+            document.getElementById('ft-total').innerText = fmtMoney(sums.tot);
+        }
+
+        // --- Sorting ---
+        let sortDir = 1;
+        function sortData(key) {
+            sortDir *= -1;
+            store.results.sort((a, b) => {
+                let valA = a[key], valB = b[key];
+                if(typeof valA === 'string') return valA.localeCompare(valB) * sortDir;
+                return (valA - valB) * sortDir;
+            });
+            renderTable();
+        }
+
+        // --- Helpers ---
+        function fmtMoney(n) { return new Intl.NumberFormat('en-AE', { minimumFractionDigits: 2 }).format(n); }
+        function toggleSettings() { document.getElementById('settings-modal').classList.toggle('hidden'); }
+
+        function downloadExcel() {
+            if(store.results.length === 0) return;
+            const showNotes = document.getElementById('setting-notes').checked;
+            
+            // Clean for export
+            const data = store.results.map(r => {
+                let row = {
+                    "Sales Unit": r.SalesUnit,
+                    "Name": r.Name,
+                    "Joined Date": r.JoinedDate,
+                    "Division": r.Division,
+                    "Target Fulfillment": r.stfDisplay,
+                    "Monthly Sales": r.MonthlySales,
+                    "Seniority Bonus": r.SeniorityBonus,
+                    "Commission": r.Commission,
+                    "STF Bonus": r.STFBonus,
+                    "Cust Bonus": r.CustBonus,
+                    "Total Payout": r.Total
+                };
+                if(showNotes) row["Notes"] = r.Notes;
+                return row;
+            });
+
+            const ws = XLSX.utils.json_to_sheet(data);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "Payroll");
+            XLSX.writeFile(wb, `Wurth_Compensation_${new Date().toISOString().slice(0,10)}.xlsx`);
+        }
+    </script>
+</body>
+</html>
